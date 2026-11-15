@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xác nhận thanh toán - Gundam Shop</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9eef5; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #1b2733; }
+  .phone { width: 100%; max-width: 400px; background: #fff; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,.15); overflow: hidden; margin: 16px; }
+  .top { background: linear-gradient(135deg, #0068ff, #3b8cff); color: #fff; padding: 22px 24px; }
+  .top small { opacity: .85; }
+  .top b { display: block; font-size: 20px; }
+  .body { padding: 24px; }
+  .center { text-align: center; }
+  .muted { color: #6b7785; font-size: 14px; }
+  .amount { font-size: 34px; font-weight: 800; color: #0f2a4a; text-align: center; margin: 6px 0 14px; }
+  .line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #e5e9ee; font-size: 14px; }
+  .line span:first-child { color: #6b7785; }
+  button { background: #0068ff; color: #fff; border: 0; width: 100%; padding: 15px; border-radius: 12px; font-weight: 700; font-size: 16px; box-shadow: 0 6px 16px rgba(0,104,255,.3); margin-top: 22px; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .ok { width: 84px; height: 84px; border-radius: 50%; background: #28a745; color: #fff; font-size: 48px; line-height: 84px; text-align: center; margin: 4px auto 14px; animation: pop .4s ease-out; }
+  @keyframes pop { 0% { transform: scale(.3); opacity: 0 } 70% { transform: scale(1.1) } 100% { transform: scale(1); opacity: 1 } }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  .green { color: #198754; } .red { color: #b02a37; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <div id="s-confirm" hidden>
+    <div class="top"><small>Ngân hàng mô phỏng</small><b>Xác nhận thanh toán</b></div>
+    <div class="body">
+      <div class="center muted">Thanh toán cho</div>
+      <div class="center" style="font-weight:700">GUNDAM SHOP</div>
+      <div class="amount" id="amt"></div>
+      <div class="line"><span>Mã đơn hàng</span><b id="code"></b></div>
+      <div class="line"><span>Nội dung</span><span id="code2"></span></div>
+      <button id="btn" type="button">XÁC NHẬN THANH TOÁN</button>
+      <p class="center muted" style="margin:14px 0 0">Trang mô phỏng: không trừ tiền thật.</p>
+      <p class="center red muted" id="err" hidden style="margin:10px 0 0"></p>
+    </div>
+  </div>
+
+  <div id="s-done" class="body center" hidden style="padding:48px 24px">
+    <div class="ok">&#10003;</div>
+    <h1 class="green">Đã xác nhận thanh toán thành công</h1>
+    <p class="muted" style="margin:0 0 6px">Đơn <b id="code3"></b> đã được thanh toán.</p>
+    <p class="muted" style="margin:0">Bạn có thể đóng trang này. Màn hình đặt hàng sẽ tự cập nhật.</p>
+  </div>
+
+  <div id="s-bad" class="body center" hidden style="padding:48px 24px">
+    <h1>Liên kết không hợp lệ</h1>
+    <p class="muted" style="margin:0">Hãy quét lại mã QR trên trang thanh toán của cửa hàng.</p>
+  </div>
+
+</div>
+
+<script>
+// ====== CHỈNH MỖI DÒNG NÀY: địa chỉ Realtime Database của bạn (không có dấu / ở cuối) ======
+var DB_URL = 'https://gundamshop-pay-default-rtdb.asia-southeast1.firebasedatabase.app';
+// ===========================================================================================
+
+(function () {
+  var q = new URLSearchParams(location.search);
+  var code = q.get('code') || '', t = q.get('t') || '', amt = parseInt(q.get('amt'), 10);
+  var $ = function (id) { return document.getElementById(id); };
+  var show = function (id) { ['s-confirm', 's-done', 's-bad'].forEach(function (k) { $(k).hidden = k !== id; }); };
+
+  // Chỉ nhận mã bí mật dạng chữ-số (khớp rule của Firebase); đơn hàng thật vẫn do web của cửa hàng kiểm tra lại
+  if (!/^[A-Za-z0-9]{16,64}$/.test(t) || !/^[A-Za-z0-9]{4,20}$/.test(code) || DB_URL.indexOf('TEN-DU-AN') >= 0) { show('s-bad'); return; }
+
+  $('code').textContent = $('code2').textContent = $('code3').textContent = code;
+  $('amt').textContent = isFinite(amt) ? String(amt).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' ₫' : '';
+  var node = DB_URL.replace(/\/$/, '') + '/pay/' + t + '.json';
+
+  // Đã xác nhận trước đó (quét lại / tải lại trang) thì hiện luôn màn hình thành công
+  fetch(node + '?shallow=false', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) { show(d && d.paid === true ? 's-done' : 's-confirm'); })
+    .catch(function () { show('s-confirm'); });
+
+  $('btn').addEventListener('click', function () {
+    var b = $('btn'); b.disabled = true; $('err').hidden = true;
+    fetch(node, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paid: true, at: { '.sv': 'timestamp' } })
+    }).then(function (r) {
+      if (r.ok) { show('s-done'); return; }
+      // 401 = node đã tồn tại (đã xác nhận rồi) hoặc rule từ chối
+      return fetch(node, { cache: 'no-store' }).then(function (g) { return g.json(); }).then(function (d) {
+        if (d && d.paid === true) show('s-done');
+        else { $('err').textContent = 'Không ghi được vào Firebase (' + r.status + '). Kiểm tra rule và DB_URL.'; $('err').hidden = false; b.disabled = false; }
+      });
+    }).catch(function () { $('err').textContent = 'Không kết nối được. Kiểm tra mạng rồi thử lại.'; $('err').hidden = false; b.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>
